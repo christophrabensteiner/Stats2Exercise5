@@ -1,0 +1,228 @@
+---
+title: "Uebung_AlgoLAB_2_NN_Regression"
+author: "Christoph Rabensteiner"
+date: "19 Juni 2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+urlcolor: cyan
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Bitte um Beachtung der [uebungs-Policy](https://weblearn.fh-kufstein.ac.at/mod/page/view.php?id=46374) fuer genaue Anweisungen und einige Beurteilungsnotizen. Fehler bei der Einhaltung ergeben Punktabzug.
+---
+
+Bei dieser Uebung werden Sie:
+
+-einen Datensatz partitionieren
+-Preprocessing anwenden
+-Regressionen mit dem neuronalen Netz durchführen
+-Regression mit OLS durchführen
+-Modelle vergleichen
+
+Info: Maximale Anzahl erwerbare Punkte zur Benotung = 50
+
+Wichtig!
+Um Algorithmusname und Parameter auszuwaehlen, bediene dich der jeweiligen Paketanleitung.
+Installiere benoetigte Pakete selbst.
+Bediene dich R Hilfe bezueglich Funktionen und dazugehoerigen Argumenten.
+
+Der Datensatz beschreibt 13 numerische Eigenschaften von Häusern in Bostoner Vororten und befasst sich mit der Modellierung des Preises von Häusern in diesen Vororten in Tausenden von Dollar.
+
+Y Variable (Responsevariable) ist "medv" (median value)
+
+---
+```{r, echo=F, message = FALSE, warning = FALSE}
+library("neuralnet")
+library("MASS")
+library("tidyverse")
+library("caret")
+library("ModelMetrics")
+```
+
+
+Importiere Daten:
+```{r}
+data = Boston
+str(data)
+```
+
+Normalisere Daten mit der minmax Methode (sog feature scaling)
+(2 Punkte)
+
+**Normalisierung der Daten:**
+```{r}
+maxdata <- apply(data,2,max)
+mindata = apply(data,2,min)
+data_scaled <- as.data.frame(scale(data, center = mindata, scale=maxdata-mindata))
+```
+
+Partitioniere Daten in Training- und Testset mit einem Verhältnis von 70:30. Beachte die Reproduzierbarkeit.
+ (2 Punkte)
+ 
+**Train-Test Split:**
+```{r}
+set.seed(321)
+index = sample(1:nrow(data), round(0.70*nrow(data)))
+train_data <- as.data.frame(data_scaled[index,])
+test_data <- as.data.frame(data_scaled[-index,1:13])
+```
+
+Stelle die Regressionsformel als String auf. Nutze dafür die Funktion paste und das Argument collapse
+ (2 Punkte)
+
+**Regressionsformel:** 
+```{r}
+cnames <- colnames(train_data)
+cnames2 <- cnames[-14]
+formel <-  as.formula(paste("medv~", paste(cnames2, collapse = "+")))
+```
+
+Führe das Training des Modells mit 10 hidden Layers NN aus (Argument hidden).
+Benutze für das Training die Funktion neuralnet.
+Beachte das Argument linear.output.
+ (4 Punkte)
+ 
+**Neural Network Training:**
+```{r}
+NNModel = neuralnet(formel, data = train_data, hidden=10, linear.output = T)
+```
+
+Visualisiere Modell mit der Funktion plot
+ (2 Punkte)
+
+**Visualisierung: **
+
+
+```{r,echo=F}
+plot(NNModel, rep="best")
+```
+
+Prognostiziere Ergebnisse mit dem Testset mit der Funktion compute.
+Referenziere dabei das Paket mit der Funktion 
+neuralnet::compute(...
+(3 Punkte) 
+
+**Vorhersage:**
+```{r}
+pred_nn1 <- neuralnet::compute(NNModel,test_data)
+```
+
+Berechne MSE
+Beachte, dass jetzt die prognostizierte Werte als auch Testwerte zuerst denormalisiert werden müssen. Dh die vorherige Normalisierung muss jetzt rückwerts berechnet werden.
+ (3 Punkte)
+ 
+**Unskalieren der Daten um Ergebnisse vergleichen zu können:**
+```{r}
+pred_unsc <- pred_nn1$net.result*(max(data$medv)-min(data$medv))+min(data$medv)
+test_unsc <- as.data.frame(data[-index,])
+```
+
+**Berechnung MSE:**
+```{r}
+MSE_nn1 <- ModelMetrics::mse(test_unsc$medv, pred_unsc)
+```
+
+Generiere jetzt ein anderes Traingset und ein anderes Testset mit den vorhin generierten Indizes, aber diesmal mit originalen, nicht-normalisierten Daten. 
+ (2 Punkte)
+ 
+**neues Trainingsset mit nicht-normalisierten Daten:**
+```{r}
+set.seed(321)
+#index = sample(1:nrow(data), round(0.70*nrow(data)))
+train_data2 <- as.data.frame(data[index,])
+test_data2 <- as.data.frame(data[-index,])
+```
+
+Stelle ein OLS Rgeressionsmodell auf und führe Summary des Modells aus.
+ (4 Punkte)
+ 
+**OLS Regressionsmodell:**
+```{r}
+lmodel <- glm(medv~., data = train_data2)
+summary(lmodel)
+```
+
+Prognostiziere Ergebnisse des OLS Modells mit dem Testset. (Funktion predict)
+ (3 Punkte)
+ 
+**Vorhersage:**
+```{r}
+pred_lm <- predict(lmodel, newdata=test_data2) 
+```
+
+Berechne MSE für das OLS Modell
+ (4 Punkte)
+ 
+**Test-MSE**
+```{r}
+MSE_lm <- ModelMetrics::mse(test_data2$medv, pred_lm)
+```
+
+Vergleiche NN MSE und OLS MSE. 
+ (2 Punkte)
+ 
+**Vergleich der ersten zwei Modelle:**
+```{r, echo=F}
+MSE_compare <- data.frame(Model = c('Test-MSE Neural Network:','Test-MSE Linear Model:'),
+                          MSE = c(MSE_nn1,MSE_lm))
+MSE_compare
+```
+Berechne jetzt ein Regressionsmodell mit neuronalem Netz mit 3 Hidden Layers und den normaliserten Daten. Das 1. Hidden Layer muss 5, das 2. muss 3 und das dritte 2 Neuronen haben. (6 Punkte)
+
+**Datensatz mit normalisierten Daten:**
+```{r}
+train_data3 <- as.data.frame(data_scaled[index,])
+test_data3 <- as.data.frame(data_scaled[-index,1:13])
+```
+
+**Model-Training:**
+```{r}
+#if linear.output = True -> Regessionsmodell wird berechnet.
+NNModel2 = neuralnet(medv~., data = train_data3, hidden=c(5,3,2), linear.output = T)
+```
+
+Visualisiere Modell mit der Funktion plot
+ (2 Punkte)
+ 
+**Visualisierung:**
+
+
+```{r,echo=F}
+plot(NNModel2, rep="best")
+```
+
+Prognostiziere Ergebnisse mit dem Testset
+ (3 Punkte)
+
+**Vorhersage:**
+```{r}
+pred_nn2 <- neuralnet::compute(NNModel2, test_data3)
+```
+
+**Unskalieren der Daten**
+```{r}
+pred_unsc3 <- pred_nn2$net.result*(max(data$medv)-min(data$medv))+min(data$medv)
+test_unsc3 <- as.data.frame(data[-index,])
+```
+
+Berechne MSE
+ (4 Punkte)
+ 
+**Berechnung MSE:**
+```{r}
+MSE_nn2 <- ModelMetrics::mse(test_unsc3$medv, pred_unsc3)
+```
+
+Vergleiche jetzt den neuen NN MSE, den alten NN MSE und OLS MSE. 
+ (2 Punkte)
+ 
+**Vergleich aller Modelle:**
+```{r, echo=F}
+MSE_compare2 <- data.frame(Model = c('Test-MSE Neural Network (1):','Test-MSE Linear Model:','Test-MSE Neural Network (2):'),
+                          MSE = c(MSE_nn1,MSE_lm, MSE_nn2))
+MSE_compare2
+```
